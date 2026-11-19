@@ -16,42 +16,39 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Baixar repositório
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Encontrar ZIP do projeto
+      - name: Localizar ZIP
         id: zip
-        shell: bash
         run: |
           ZIP=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
 
           if [ -z "$ZIP" ]; then
-            echo "ERRO: Nenhum arquivo ZIP encontrado na raiz!"
+            echo "Nenhum ZIP encontrado!"
             exit 1
           fi
 
-          echo "Arquivo encontrado: $ZIP"
           echo "path=$ZIP" >> "$GITHUB_OUTPUT"
 
-      - name: Extrair projeto Android
-        shell: bash
+      - name: Extrair ZIP
         run: |
           mkdir -p extracted
-          unzip -q "${{ steps.zip.outputs.path }}" -d extracted
+          unzip -o "${{ steps.zip.outputs.path }}" -d extracted
 
           PROJECT_DIR=$(find extracted -type f \
-            \( -name "settings.gradle.kts" -o -name "settings.gradle" \) \
+            \( -name settings.gradle -o -name settings.gradle.kts \) \
             -printf '%h\n' | head -n 1)
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo "ERRO: Projeto Gradle não encontrado dentro do ZIP!"
+            echo "Projeto Android não encontrado!"
+            find extracted -maxdepth 4 -type f
             exit 1
           fi
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Projeto encontrado em: $PROJECT_DIR"
 
-      - name: Configurar Java 17
+      - name: Configurar Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -59,35 +56,48 @@ jobs:
 
       - name: Configurar Android SDK
         uses: android-actions/setup-android@v3
-
-      - name: Instalar SDK 35
-        run: |
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
-
-      - name: Configurar Gradle 8.9
-        uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          packages: platform-tools
+          accept-android-sdk-licenses: true
+
+      - name: Instalar componentes Android
+        run: |
+          sdkmanager --install \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "platform-tools"
+
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Compilar APK
         run: |
-          gradle -p "$PROJECT_DIR" --no-daemon assembleDebug
+          cd "$PROJECT_DIR"
 
-      - name: Verificar APK
+          if [ -f gradlew ]; then
+            chmod +x gradlew
+            ./gradlew --no-daemon assembleDebug
+          else
+            gradle --no-daemon assembleDebug
+          fi
+
+      - name: Localizar APK
         run: |
-          APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
+          mkdir -p "$GITHUB_WORKSPACE/apk-output"
 
-          if [ ! -f "$APK" ]; then
-            echo "ERRO: APK não foi gerado!"
+          APK=$(find "$PROJECT_DIR" -type f \
+            -path "*/build/outputs/apk/*/*.apk" | head -n 1)
+
+          if [ -z "$APK" ]; then
+            echo "APK não foi gerado!"
             exit 1
           fi
 
-          echo "APK gerado com sucesso!"
-          ls -lh "$APK"
+          cp "$APK" "$GITHUB_WORKSPACE/apk-output/JARVIS-AI.apk"
 
-      - name: Disponibilizar APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: JARVIS-AI-APK
-          path: extracted/**/app/build/outputs/apk/debug/app-debug.apk
+          path: apk-output/JARVIS-AI.apk
           if-no-files-found: error
