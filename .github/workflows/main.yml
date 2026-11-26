@@ -1,103 +1,48 @@
-
-name: Build JARVIS AI APK
+name: Build Android APK
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - main
-      - master
-
-permissions:
-  contents: read
+    branches: [main, master]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Localizar ZIP
-        id: zip
-        run: |
-          ZIP=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
-          if [ -z "$ZIP" ]; then
-            echo "Nenhum ZIP encontrado!"
-            exit 1
-          fi
-
-          echo "path=$ZIP" >> "$GITHUB_OUTPUT"
-
-      - name: Extrair ZIP
-        run: |
-          mkdir -p extracted
-          unzip -o "${{ steps.zip.outputs.path }}" -d extracted
-
-          PROJECT_DIR=$(find extracted -type f \
-            \( -name settings.gradle -o -name settings.gradle.kts \) \
-            -printf '%h\n' | head -n 1)
-
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "Projeto Android não encontrado!"
-            find extracted -maxdepth 4 -type f
-            exit 1
-          fi
-
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-      - name: Configurar Java
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: 17
 
-      - name: Configurar Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: platform-tools
-          accept-android-sdk-licenses: true
+      - name: Instalar dependencias
+        run: npm install
 
-      - name: Instalar componentes Android
-        run: |
-          sdkmanager --install \
-            "platforms;android-35" \
-            "build-tools;35.0.0" \
-            "platform-tools"
+      - name: Gerar build web
+        run: npm run build
 
-      - name: Configurar Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Criar projeto Android
+        run: npx cap add android
+
+      - name: Sincronizar com Android
+        run: npx cap sync android
+
+      - name: Permitir HTTP local (localhost do Termux)
+        run: sed -i 's/<application/<application android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml
 
       - name: Compilar APK
         run: |
-          cd "$PROJECT_DIR"
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
 
-          if [ -f gradlew ]; then
-            chmod +x gradlew
-            ./gradlew --no-daemon assembleDebug
-          else
-            gradle --no-daemon assembleDebug
-          fi
-
-      - name: Localizar APK
-        run: |
-          mkdir -p "$GITHUB_WORKSPACE/apk-output"
-
-          APK=$(find "$PROJECT_DIR" -type f \
-            -path "*/build/outputs/apk/*/*.apk" | head -n 1)
-
-          if [ -z "$APK" ]; then
-            echo "APK não foi gerado!"
-            exit 1
-          fi
-
-          cp "$APK" "$GITHUB_WORKSPACE/apk-output/JARVIS-AI.apk"
-
-      - name: Upload APK
+      - name: Enviar APK
         uses: actions/upload-artifact@v4
         with:
-          name: JARVIS-AI-APK
-          path: apk-output/JARVIS-AI.apk
-          if-no-files-found: error
+          name: devai-chat-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
