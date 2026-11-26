@@ -20,15 +20,25 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      - name: Extrair projeto do zip
+        run: |
+          ZIP=$(find . -maxdepth 2 -name "*.zip" -not -path "./.git/*" | head -n 1)
+          if [ -z "$ZIP" ]; then
+            echo "ERRO: nenhum arquivo .zip encontrado na raiz do repositorio."
+            exit 1
+          fi
+          echo "Extraindo $ZIP"
+          unzip -q "$ZIP" -d extraido
+
       - name: Localizar projeto DEVAI
         run: |
-          CONFIG=$(find . -name capacitor.config.json -not -path "*/node_modules/*" | head -n 1)
+          CONFIG=$(find extraido -name capacitor.config.json -not -path "*/node_modules/*" | head -n 1)
           if [ -z "$CONFIG" ]; then
-            echo "ERRO: nenhum capacitor.config.json encontrado. Envie os arquivos do projeto para o repositorio."
+            echo "ERRO: capacitor.config.json nao encontrado dentro do zip."
             exit 1
           fi
           APP_DIR=$(dirname "$CONFIG")
-          echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
+          echo "APP_DIR=$GITHUB_WORKSPACE/$APP_DIR" >> "$GITHUB_ENV"
           echo "Projeto encontrado em: $APP_DIR"
 
       - name: Instalar dependencias
