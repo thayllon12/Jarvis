@@ -20,29 +20,53 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      - name: Localizar projeto DEVAI
+        run: |
+          CONFIG=$(find . -name capacitor.config.json -not -path "*/node_modules/*" | head -n 1)
+          if [ -z "$CONFIG" ]; then
+            echo "ERRO: nenhum capacitor.config.json encontrado. Envie os arquivos do projeto para o repositorio."
+            exit 1
+          fi
+          APP_DIR=$(dirname "$CONFIG")
+          echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
+          echo "Projeto encontrado em: $APP_DIR"
+
       - name: Instalar dependencias
-        run: npm install
+        run: |
+          cd "$APP_DIR"
+          npm install
 
       - name: Gerar build web
-        run: npm run build
+        run: |
+          cd "$APP_DIR"
+          npm run build
 
       - name: Criar projeto Android
-        run: npx cap add android
+        run: |
+          cd "$APP_DIR"
+          npx cap add android
 
       - name: Sincronizar com Android
-        run: npx cap sync android
+        run: |
+          cd "$APP_DIR"
+          npx cap sync android
 
       - name: Permitir HTTP local (localhost do Termux)
-        run: sed -i 's/<application/<application android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml
+        run: |
+          cd "$APP_DIR"
+          sed -i 's/<application/<application android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml
 
       - name: Compilar APK
         run: |
-          cd android
+          cd "$APP_DIR/android"
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
+
+      - name: Copiar APK
+        run: cp "$APP_DIR/android/app/build/outputs/apk/debug/app-debug.apk" "$GITHUB_WORKSPACE/devai-chat.apk"
 
       - name: Enviar APK
         uses: actions/upload-artifact@v4
         with:
           name: devai-chat-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: devai-chat.apk
